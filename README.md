@@ -4,7 +4,7 @@ Synchronize Obsidian Markdown notes with the TipTap articles used by `blog.imsng
 
 ## Setup
 
-1. Deploy the reference Worker in `worker/`, or mount its route in the `blogweb` repository and adapt `worker/src/repository.ts` to the existing `posts` service. `blogweb` stores article content in `posts.contentJson`; its post processing workflow generates Shiki-highlighted `publicContentJson`.
+1. For production, use the integrated route in the `blogweb` repository at `https://blog.imsng.top/api/obsidian/articles`. Set the same `OBSIDIAN_SYNC_TOKEN` secret in Cloudflare and in the plugin. The standalone Worker in `worker/` is available for isolated development. `blogweb` stores article content in `posts.contentJson`; its post processing workflow generates Shiki-highlighted `publicContentJson`.
 2. Set the Worker secret with `wrangler secret put OBSIDIAN_SYNC_TOKEN` and apply the D1 migration. Keep the token out of source control.
 3. In Obsidian open **Settings → Blog sync**, enter the Worker URL, the same token, and the public site URL. Choose a folder for imported articles.
 
