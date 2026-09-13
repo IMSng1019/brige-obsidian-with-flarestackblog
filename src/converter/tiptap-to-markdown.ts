@@ -48,7 +48,15 @@ function serializeInlineNodes(nodes: TiptapNode[]): string {
 	for (const node of nodes) {
 		const next = node.type === 'text' ? [...(node.marks ?? [])].reverse() : [];
 		transition(next);
-		if (node.type === 'text') result += escapeText(node.text ?? '');
+		if (node.type === 'text') {
+			const value = node.text ?? '';
+			// Markdown code spans treat their contents literally. Escaping
+			// punctuation here would persist the backslashes in the downloaded
+			// note, so only escape backticks that could close the span.
+			result += next.some((mark) => mark.type === 'code')
+				? value.replace(/`/g, '\\`')
+				: escapeText(value);
+		}
 		else if (node.type === 'hardBreak') result += '\n';
 		else if (node.type === 'image') {
 			const src = typeof node.attrs?.src === 'string' ? node.attrs.src : '';

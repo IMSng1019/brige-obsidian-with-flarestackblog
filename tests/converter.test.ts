@@ -71,6 +71,37 @@ test('round trips code language and inline marks', () => {
 	assert.equal(result, source);
 });
 
+test('preserves Markdown punctuation inside inline code', () => {
+	const markdown = tiptapToMarkdown({
+		type: 'doc',
+		content: [{
+			type: 'paragraph',
+			content: [{ type: 'text', text: 'a_b * c', marks: [{ type: 'code' }] }],
+		}],
+	});
+
+	assert.equal(markdown, '`a_b * c`');
+});
+
+test('unescapes all Markdown punctuation in literal text', () => {
+	const document = markdownToTiptap('\\# heading \\+ plus \\- dash \\! bang \\{x\\} \\(x\\) \\| \\> \\\\path');
+	const text = document.content[0]?.content?.map((node) => node.text ?? '').join('');
+
+	assert.equal(text, '# heading + plus - dash ! bang {x} (x) | > \\path');
+});
+
+test('round trips website-exported escaped text without storing escape slashes', () => {
+	const original = 'literal **text** # heading + plus - dash';
+	const markdown = tiptapToMarkdown({
+		type: 'doc',
+		content: [{ type: 'paragraph', content: [{ type: 'text', text: original }] }],
+	});
+	const document = markdownToTiptap(markdown);
+	const text = document.content[0]?.content?.map((node) => node.text ?? '').join('');
+
+	assert.equal(text, original);
+});
+
 test('parses bold text inside links without preserving Markdown markers as text', () => {
 	const document = markdownToTiptap('[**文本**](https://example.com)');
 

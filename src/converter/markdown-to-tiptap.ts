@@ -67,7 +67,7 @@ function parseInline(source: string): TiptapNode[] {
 
 	for (let index = 0; index < source.length; index += 1) {
 		const character = source[index];
-		if (character === '\\' && index + 1 < source.length && /[*_`~[\\]/.test(source[index + 1] ?? '')) {
+		if (character === '\\' && index + 1 < source.length && /[\\`*_{}()[\]#+!|>~-]/.test(source[index + 1] ?? '')) {
 			buffer += source[index + 1];
 			index += 1;
 			continue;
