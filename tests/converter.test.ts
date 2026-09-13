@@ -71,6 +71,53 @@ test('round trips code language and inline marks', () => {
 	assert.equal(result, source);
 });
 
+test('parses bold text inside links without preserving Markdown markers as text', () => {
+	const document = markdownToTiptap('[**文本**](https://example.com)');
+
+	assert.deepEqual(document.content[0], {
+		type: 'paragraph',
+		content: [{
+			type: 'text',
+			text: '文本',
+			marks: [
+				{ type: 'bold' },
+				{ type: 'link', attrs: { href: 'https://example.com' } },
+			],
+		}],
+	});
+	assert.equal(tiptapToMarkdown(document), '[**文本**](https://example.com)');
+});
+
+test('parses links nested inside bold text without escaping link syntax', () => {
+	const document = markdownToTiptap('**[文本](https://example.com)**');
+
+	assert.deepEqual(document.content[0], {
+		type: 'paragraph',
+		content: [{
+			type: 'text',
+			text: '文本',
+			marks: [
+				{ type: 'link', attrs: { href: 'https://example.com' } },
+				{ type: 'bold' },
+			],
+		}],
+	});
+	assert.equal(tiptapToMarkdown(document), '**[文本](https://example.com)**');
+});
+
+test('parses nested bold and italic marks as a single marked text node', () => {
+	const document = markdownToTiptap('**粗体 *斜体***');
+
+	assert.deepEqual(document.content[0], {
+		type: 'paragraph',
+		content: [
+			{ type: 'text', text: '粗体 ', marks: [{ type: 'bold' }] },
+			{ type: 'text', text: '斜体', marks: [{ type: 'italic' }, { type: 'bold' }] },
+		],
+	});
+	assert.equal(tiptapToMarkdown(document), '**粗体 _斜体_**');
+});
+
 test('converts GFM tables with alignment and inline cell content', () => {
 	const document = markdownToTiptap(
 		'| Name | Score |\n| :--- | ---: |\n| **Alice** | 42 |\n| Bob | |',

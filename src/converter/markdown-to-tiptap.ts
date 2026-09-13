@@ -19,7 +19,39 @@ function textNode(text: string, marks?: TiptapMark[]): TiptapNode {
 }
 
 function findClosing(source: string, marker: string, start: number): number {
-	return source.indexOf(marker, start);
+	let index = source.indexOf(marker, start);
+	while (index >= 0) {
+		const delimiter = marker[0];
+		if ((delimiter === '*' || delimiter === '_') && source[index + marker.length] === delimiter) {
+			let end = index + marker.length;
+			while (source[end] === delimiter) end += 1;
+			if (marker.length === 2) {
+				// A run of three or more delimiters ends a nested italic mark
+				// before the outer bold mark. Keep the first delimiter in the
+				// inner text so the recursive parser can consume it.
+				index = end - marker.length;
+				return index;
+			}
+			// For an outer single delimiter, a multi-character run before
+			// the end belongs to a nested strong mark. Skip it and continue
+			// looking for the outer closing delimiter. At the end of the
+			// source, use the final delimiter and leave the preceding run
+			// for the recursive parser.
+			const next = source.indexOf(marker, end);
+			if (next < 0) return end - 1;
+			index = next;
+			continue;
+		}
+		return index;
+	}
+	return -1;
+}
+
+function applyMark(nodes: TiptapNode[], mark: TiptapMark): TiptapNode[] {
+	return nodes.map((node) => {
+		if (node.type !== 'text') return node;
+		return { ...node, marks: [...(node.marks ?? []), mark] };
+	});
 }
 
 function parseInline(source: string): TiptapNode[] {
@@ -69,7 +101,7 @@ function parseInline(source: string): TiptapNode[] {
 			flush();
 			const attrs: Record<string, unknown> = { href: linkMatch[2] };
 			if (linkMatch[3]) attrs.title = linkMatch[3];
-			nodes.push(textNode(linkMatch[1] ?? '', [{ type: 'link', attrs }]));
+			nodes.push(...applyMark(parseInline(linkMatch[1] ?? ''), { type: 'link', attrs }));
 			index += linkMatch[0].length - 1;
 			continue;
 		}
@@ -90,7 +122,7 @@ function parseInline(source: string): TiptapNode[] {
 			const end = findClosing(source, marker, index + marker.length);
 			if (end > index + marker.length) {
 				flush();
-				nodes.push(textNode(source.slice(index + marker.length, end), [{ type: markType }]));
+				nodes.push(...applyMark(parseInline(source.slice(index + marker.length, end)), { type: markType }));
 				index = end + marker.length - 1;
 				continue;
 			}

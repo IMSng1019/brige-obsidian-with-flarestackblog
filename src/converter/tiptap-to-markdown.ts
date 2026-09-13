@@ -4,32 +4,65 @@ function escapeText(value: string): string {
 	return value.replace(/([\\`*_{}()[\]#+!|>~-])/g, '\\$1');
 }
 
-function markText(value: string, marks: TiptapMark[] | undefined): string {
-	let result = value;
-	for (const mark of [...(marks ?? [])].reverse()) {
-		if (mark.type === 'bold') result = `**${result}**`;
-		else if (mark.type === 'italic') result = `*${result}*`;
-		else if (mark.type === 'strike') result = `~~${result}~~`;
-		else if (mark.type === 'code') result = `\`${result.replace(/`/g, '\\`')}\``;
-		else if (mark.type === 'link') {
-			const href = typeof mark.attrs?.href === 'string' ? mark.attrs.href : '';
-			const title = typeof mark.attrs?.title === 'string' ? ` "${mark.attrs.title}"` : '';
-			result = `[${result}](${href}${title})`;
-		}
+function markDelimiter(mark: TiptapMark, outerMarks: TiptapMark[] = []): { open: string; close: string } {
+	if (mark.type === 'bold') return { open: '**', close: '**' };
+	if (mark.type === 'italic') {
+		// Use an underscore when italic text is nested in bold text. Two
+		// different delimiters keep adjacent mark boundaries unambiguous
+		// (for example, `**bold _italic_**`). Standalone italics retain the
+		// conventional asterisk form.
+		return outerMarks.some((outer) => outer.type === 'bold')
+			? { open: '_', close: '_' }
+			: { open: '*', close: '*' };
 	}
+	if (mark.type === 'strike') return { open: '~~', close: '~~' };
+	if (mark.type === 'code') return { open: '`', close: '`' };
+	if (mark.type === 'link') {
+		const href = typeof mark.attrs?.href === 'string' ? mark.attrs.href : '';
+		const title = typeof mark.attrs?.title === 'string' ? ` "${mark.attrs.title}"` : '';
+		return { open: '[', close: `](${href}${title})` };
+	}
+	return { open: '', close: '' };
+}
+
+function marksEqual(first: TiptapMark, second: TiptapMark): boolean {
+	if (first.type !== second.type) return false;
+	const firstAttrs = first.attrs ?? {};
+	const secondAttrs = second.attrs ?? {};
+	const keys = new Set([...Object.keys(firstAttrs), ...Object.keys(secondAttrs)]);
+	return [...keys].every((key) => firstAttrs[key] === secondAttrs[key]);
+}
+
+function serializeInlineNodes(nodes: TiptapNode[]): string {
+	let result = '';
+	let active: TiptapMark[] = [];
+
+	const transition = (next: TiptapMark[]) => {
+		let common = 0;
+		while (common < active.length && common < next.length && marksEqual(active[common]!, next[common]!)) common += 1;
+		for (let index = active.length - 1; index >= common; index -= 1) result += markDelimiter(active[index]!, active.slice(0, index)).close;
+		for (let index = common; index < next.length; index += 1) result += markDelimiter(next[index]!, next.slice(0, index)).open;
+		active = next;
+	};
+
+	for (const node of nodes) {
+		const next = node.type === 'text' ? [...(node.marks ?? [])].reverse() : [];
+		transition(next);
+		if (node.type === 'text') result += escapeText(node.text ?? '');
+		else if (node.type === 'hardBreak') result += '\n';
+		else if (node.type === 'image') {
+			const src = typeof node.attrs?.src === 'string' ? node.attrs.src : '';
+			const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : '';
+			const title = typeof node.attrs?.title === 'string' ? ` "${node.attrs.title}"` : '';
+			result += `![${alt}](${src}${title})`;
+		} else if (node.content) result += serializeInlineNodes(node.content);
+	}
+	transition([]);
 	return result;
 }
 
 function inline(node: TiptapNode): string {
-	if (node.type === 'text') return markText(escapeText(node.text ?? ''), node.marks);
-	if (node.type === 'hardBreak') return '\n';
-	if (node.type === 'image') {
-		const src = typeof node.attrs?.src === 'string' ? node.attrs.src : '';
-		const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : '';
-		const title = typeof node.attrs?.title === 'string' ? ` "${node.attrs.title}"` : '';
-		return `![${alt}](${src}${title})`;
-	}
-	return (node.content ?? []).map(inline).join('');
+	return serializeInlineNodes([node]);
 }
 
 function escapeHtml(value: string): string {
@@ -56,7 +89,7 @@ function inlineHtml(node: TiptapNode): string {
 
 function cellText(node: TiptapNode): string {
 	return (node.content ?? []).map((child) => {
-		if (child.type === 'paragraph') return (child.content ?? []).map(inline).join('');
+		if (child.type === 'paragraph') return serializeInlineNodes(child.content ?? []);
 		return block(child);
 	}).join('\n').replace(/\r?\n/g, '<br>');
 }
@@ -117,10 +150,10 @@ function tableToHtml(node: TiptapNode): string {
 
 function block(node: TiptapNode, depth = 0): string {
 	const children = node.content ?? [];
-	if (node.type === 'paragraph') return children.map(inline).join('');
+	if (node.type === 'paragraph') return serializeInlineNodes(children);
 	if (node.type === 'heading') {
 		const level = Math.min(6, Math.max(1, Number(node.attrs?.level ?? 1)));
-		return `${'#'.repeat(level)} ${children.map(inline).join('')}`;
+		return `${'#'.repeat(level)} ${serializeInlineNodes(children)}`;
 	}
 	if (node.type === 'blockquote') return children.map((child) => block(child, depth)).join('\n').split('\n').map((line) => `> ${line}`).join('\n');
 	if (node.type === 'bulletList') return children.map((child) => `- ${blockListItem(child, depth + 1)}`).join('\n');
