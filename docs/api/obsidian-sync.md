@@ -14,4 +14,4 @@ The current `blogweb` repository has public read routes but no external mutation
 
 ## Supported conversion
 
-The plugin converts headings, paragraphs, bold/italic/strike/code marks, links, images, blockquotes, ordered and unordered lists, task items, horizontal rules, and fenced code blocks with language metadata. Unknown TipTap nodes are serialized as their text descendants. Images are referenced by URL; uploading vault attachments requires a separate media API and is not silently attempted.
+The plugin converts headings, paragraphs, bold/italic/strike/code marks, links, images, blockquotes, ordered and unordered lists, task items, horizontal rules, fenced code blocks with language metadata, and GFM tables. TipTap tables with `rowspan` or `colspan` are downloaded as HTML tables so merged cells survive a round trip; simple tables remain GFM. Unknown TipTap nodes are serialized as their text descendants. Images are referenced by URL; uploading vault attachments requires a separate media API and is not silently attempted.

@@ -70,3 +70,76 @@ test('round trips code language and inline marks', () => {
 	const result = tiptapToMarkdown(markdownToTiptap(source));
 	assert.equal(result, source);
 });
+
+test('converts GFM tables with alignment and inline cell content', () => {
+	const document = markdownToTiptap(
+		'| Name | Score |\n| :--- | ---: |\n| **Alice** | 42 |\n| Bob | |',
+	);
+
+	assert.deepEqual(document.content[0], {
+		type: 'table',
+		content: [
+			{
+				type: 'tableRow',
+				content: [
+					{ type: 'tableHeader', attrs: { alignment: 'left' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Name' }] }] },
+					{ type: 'tableHeader', attrs: { alignment: 'right' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Score' }] }] },
+				],
+			},
+			{
+				type: 'tableRow',
+				content: [
+					{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Alice', marks: [{ type: 'bold' }] }] }] },
+					{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '42' }] }] },
+				],
+			},
+			{
+				type: 'tableRow',
+				content: [
+					{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bob' }] }] },
+					{ type: 'tableCell', content: [{ type: 'paragraph' }] },
+				],
+			},
+		],
+	});
+});
+
+test('serializes simple TipTap tables as GFM', () => {
+	const markdown = tiptapToMarkdown({
+		type: 'doc',
+		content: [{
+			type: 'table',
+			content: [
+				{ type: 'tableRow', content: [
+					{ type: 'tableHeader', attrs: { alignment: 'center' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Name' }] }] },
+					{ type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Value' }] }] },
+				] },
+				{ type: 'tableRow', content: [
+					{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A | B' }] }] },
+					{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '1' }] }] },
+				] },
+			],
+		}],
+	});
+
+	assert.equal(markdown, '| Name | Value |\n| :---: | --- |\n| A \\| B | 1 |');
+});
+
+test('round trips merged cells through HTML tables', () => {
+	const source = '<table>\n<thead><tr><th colspan="2">Header</th></tr></thead>\n<tbody><tr><td rowspan="2">A</td><td>B</td></tr><tr><td>C</td></tr></tbody>\n</table>';
+	const document = markdownToTiptap(source);
+
+	assert.deepEqual(document.content[0], {
+		type: 'table',
+		content: [
+			{ type: 'tableRow', content: [{ type: 'tableHeader', attrs: { colspan: 2 }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Header' }] }] }] },
+			{ type: 'tableRow', content: [
+				{ type: 'tableCell', attrs: { rowspan: 2 }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A' }] }] },
+				{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'B' }] }] },
+			] },
+			{ type: 'tableRow', content: [{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'C' }] }] }] },
+		],
+	});
+
+	assert.equal(tiptapToMarkdown(document), '<table>\n<thead>\n<tr>\n<th colspan="2">Header</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td rowspan="2">A</td>\n<td>B</td>\n</tr>\n<tr>\n<td>C</td>\n</tr>\n</tbody>\n</table>');
+});
