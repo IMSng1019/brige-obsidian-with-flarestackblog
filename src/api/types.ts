@@ -1,8 +1,10 @@
 export type {
+	AdminPost,
+	AdminPostListItem,
+	AdminPostListPage,
 	ApiErrorPayload,
-	ArticleListResponse,
 	BlogArticle,
-	CreateArticleInput,
+	CreatePostInput,
 	TiptapDocument,
-	UpdateArticleInput,
+	UpdatePostInput,
 } from '../types';

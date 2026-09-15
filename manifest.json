@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-blog-sync",
 	"name": "Blog Sync",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"minAppVersion": "1.4.0",
 	"description": "Synchronize Markdown notes with TipTap articles on a Cloudflare Worker-backed blog.",
 	"author": "IMSng",

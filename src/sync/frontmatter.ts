@@ -5,14 +5,16 @@ const FRONTMATTER_KEYS: Record<keyof SyncMetadata, string> = {
 	articleId: 'blog_id',
 	slug: 'blog_slug',
 	url: 'blog_url',
-	revision: 'blog_revision',
 	contentHash: 'blog_content_hash',
+	localHash: 'blog_local_hash',
 	updatedAt: 'blog_updated_at',
 	obsidianUri: 'blog_obsidian_uri',
-	localHash: 'blog_local_hash',
 };
 
 const REVERSE_KEYS = Object.fromEntries(Object.entries(FRONTMATTER_KEYS).map(([key, value]) => [value, key as keyof SyncMetadata])) as Record<string, keyof SyncMetadata>;
+
+/** Keys written by earlier plugin versions; dropped the next time a note is written. */
+const LEGACY_KEYS = new Set(['blog_revision']);
 
 function parseScalar(value: string): string | number | boolean | undefined {
 	const trimmed = value.trim();
@@ -58,7 +60,7 @@ export function readSyncMetadata(source: string): SyncMetadata {
 		if (!field) continue;
 		const value = parseScalar(match[2] ?? '');
 		if (value === undefined) continue;
-		if (field === 'articleId' || field === 'revision') {
+		if (field === 'articleId') {
 			if (typeof value === 'number' && Number.isInteger(value)) result[field] = value;
 		} else if (typeof value === 'string') {
 			result[field] = value;
@@ -87,6 +89,7 @@ export function writeSyncMetadata(source: string, metadata: Partial<SyncMetadata
 	for (const line of existing) {
 		const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
 		const key = match?.[1];
+		if (key && LEGACY_KEYS.has(key)) continue;
 		if (!key || !(key in REVERSE_KEYS)) {
 			outputLines.push(line);
 			continue;

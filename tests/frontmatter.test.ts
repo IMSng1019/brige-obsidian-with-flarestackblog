@@ -13,8 +13,8 @@ test('reads and writes sync metadata without changing the body', () => {
 		articleId: 42,
 		slug: 'hello-world',
 		url: 'https://blog.imsng.top/post/hello-world',
-		revision: 3,
-		contentHash: 'abc123',
+		contentHash: 'remote-hash',
+		localHash: 'local-hash',
 		updatedAt: '2026-09-08T00:00:00.000Z',
 	});
 
@@ -23,12 +23,19 @@ test('reads and writes sync metadata without changing the body', () => {
 		articleId: 42,
 		slug: 'hello-world',
 		url: 'https://blog.imsng.top/post/hello-world',
-		revision: 3,
-		contentHash: 'abc123',
+		contentHash: 'remote-hash',
+		localHash: 'local-hash',
 		updatedAt: '2026-09-08T00:00:00.000Z',
 	});
 	assert.match(updated, /tags: \[one, two\]/);
 	assert.match(updated, /# Body/);
+});
+
+test('drops the revision key written by earlier plugin versions', () => {
+	const source = '---\nblog_id: 7\nblog_revision: 3\nblog_content_hash: old\n---\nBody';
+	const updated = writeSyncMetadata(source, { contentHash: 'new' });
+	assert.match(updated, /blog_content_hash: new/);
+	assert.doesNotMatch(updated, /blog_revision/);
 });
 
 test('adds frontmatter when a note has none and preserves unrelated keys', () => {

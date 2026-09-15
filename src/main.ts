@@ -24,13 +24,19 @@ export default class BlogSyncPlugin extends Plugin {
 		this.registerEvent(this.app.vault.on('modify', (file) => { if (file instanceof TFile) this.onModify(file); }));
 	}
 
-	async loadSettings(): Promise<void> { this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<BlogSyncSettings>); }
+	async loadSettings(): Promise<void> {
+		const stored = (await this.loadData()) as (Partial<BlogSyncSettings> & { apiToken?: string }) | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored ?? {});
+		// Earlier builds stored the Admin API key as `apiToken`.
+		if (!this.settings.apiKey && stored?.apiToken) this.settings.apiKey = stored.apiToken;
+	}
+
 	async saveSettings(): Promise<void> { await this.saveData(this.settings); this.rebuildService(); }
 
 	private rebuildService(): void {
 		const apiUrl = this.settings.apiUrl || DEFAULT_SETTINGS.apiUrl;
-		const token = this.settings.apiToken || 'not-configured';
-		this.syncService = new SyncService({ app: this.app, client: new BlogApiClient({ baseUrl: apiUrl, token }), publicSiteUrl: this.settings.publicSiteUrl, rootFolder: this.settings.syncFolder });
+		const apiKey = this.settings.apiKey || 'not-configured';
+		this.syncService = new SyncService({ app: this.app, client: new BlogApiClient({ baseUrl: apiUrl, apiKey }), publicSiteUrl: this.settings.publicSiteUrl, rootFolder: this.settings.syncFolder });
 	}
 
 	private onModify(file: TFile): void {

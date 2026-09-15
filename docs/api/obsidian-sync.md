@@ -1,16 +1,34 @@
-# Obsidian sync API
+# Generic Admin API used by the plugin
 
-The plugin talks to a Cloudflare Worker using JSON and a bearer token. Configure the plugin's API URL to the Worker origin and store the same token in the Worker's `OBSIDIAN_SYNC_TOKEN` secret.
+The plugin authenticates with an Admin API key in the `x-api-key` header and uses only the blog's existing `/api/admin/posts` routes. Any external editor (script, agent, desktop client) can use the same contract.
 
-## Endpoints
+## Calls
 
-`GET /api/obsidian/articles?limit=100&cursor=0` returns `{ items, nextCursor }`. `GET /api/obsidian/articles/:id` returns one article. `POST /api/obsidian/articles` creates a draft or published article. `PUT /api/obsidian/articles/:id` updates an article when `revision` and `contentHash` still match; set `force: true` only after reviewing a conflict. `DELETE /api/obsidian/articles/:id` explicitly removes an article.
+| Plugin action | Request |
+| --- | --- |
+| Create as website article | `POST /api/admin/posts` `{ "data": { "title", "contentJson" } }` → `{ id }`, then `GET /api/admin/posts/{id}` for the canonical body and slug |
+| Upload linked article | `GET /api/admin/posts/{id}` (compare hashes) → `PATCH /api/admin/posts/{id}` `{ "data": { "title", "contentJson" } }` |
+| Publish / unpublish | `POST /api/admin/posts/{id}/publish`, `POST /api/admin/posts/{id}/unpublish` |
+| Download website article | `GET /api/admin/posts/{id}` |
+| Sync whole folder | `GET /api/admin/posts?includeContent=true&sortBy=id&sortDir=ASC&limit=50&offset=N` until `offset >= total` |
+| Delete | `DELETE /api/admin/posts/{id}` |
 
-Article JSON has `id`, `title`, `slug`, `content` (TipTap document), `revision`, `contentHash`, `updatedAt`, `published`, `url`, and optionally `obsidianUri`.
+A post is `{ id, title, summary, slug, status, contentJson, publishedAt, pinnedAt, createdAt, updatedAt }`. `contentJson` is the editable TipTap document, including for drafts; it is `null` for an empty body and the plugin then works with `{ "type": "doc", "content": [] }`.
 
-## Blogweb integration
+Errors use the oRPC envelope: `{ defined, code, status, message, data }`.
 
-The current `blogweb` repository has public read routes but no external mutation route. Its existing post table stores `contentJson`, and the post process workflow generates `publicContentJson` with Shiki highlighting. For production, mount the Worker route in `blogweb`, replace the standalone D1 repository with calls to the existing posts repository/service, and enqueue the existing post process workflow after create/update. Keep the bearer token in a Cloudflare secret and rotate it if it is exposed.
+## Why `sortBy=id`
+
+The default list order is `updatedAt DESC`, which is both second-precision and mutated by every write — including the writes a full sync performs. Paging by `offset` over that order can skip or repeat articles. `id` is the immutable primary key, so `sortBy=id&sortDir=ASC` makes offset paging stable. The plugin also asks for `includeContent=true` so a full sync is one request per 50 articles instead of one per article.
+
+## Conflict detection without a server precondition
+
+`PATCH /api/admin/posts/{id}` has no `If-Match`/`expectedVersion`, so the plugin keeps two SHA-256 hashes in the note frontmatter:
+
+- `blog_content_hash` — the website body as the plugin last read it (`title` + `contentJson`);
+- `blog_local_hash` — the local note body as the plugin last wrote or read it.
+
+Before an upload the plugin re-reads the article, recomputes both hashes and decides between upload, download, a conflict dialog, or no action. The only race left is two writers inside the same request window; the dialog still protects the common case of a browser edit and a desktop edit.
 
 ## Supported conversion
 

@@ -1,31 +1,24 @@
-# Wiring the sync API into blogweb
+# Server requirements for external editors
 
-The production route is now mounted directly in the `blogweb` Worker at `/api/obsidian/articles`. Configure the plugin API URL as `https://blog.imsng.top` (or the deployed blog domain), and configure the same bearer token in the Cloudflare secret `OBSIDIAN_SYNC_TOKEN` and in Obsidian settings. The standalone Worker in `worker/` remains useful for isolated development only.
+The plugin runs against a blog that implements the generic Admin API below. Nothing in this list is Obsidian-specific: any external editor needs the same three capabilities.
 
-Use the following mapping when replacing `worker/src/repository.ts`:
+## Required
 
-| Sync field | blogweb field | Notes |
-| --- | --- | --- |
-| `id` | `posts.id` | Keep the existing numeric post ID in frontmatter. |
-| `title` | `posts.title` | Use the existing title validation. |
-| `slug` | `posts.slug` | Call the existing slug generator for collisions. |
-| `content` | `posts.contentJson` | Store the TipTap JSON directly. |
-| `published` | `posts.status` | Map `true` to `published` and `false` to `draft`. |
-| `revision` and `contentHash` | `obsidian_post_links` | Add a small D1 link table keyed by `post_id`; `post_revisions` can also be used for audit history. |
-| `path` | `obsidian_post_links.obsidian_path` | Store the vault-relative Markdown path. |
+1. **Create with content** — `POST /api/admin/posts` accepts `{ "data": { "title", "contentJson" } }` and creates a *new* draft, generating a unique slug from the title and returning `{ id }`. Without `data` it keeps the get-or-create-empty-draft behavior the Admin UI relies on.
+2. **List with bodies** — `GET /api/admin/posts?includeContent=true` returns `contentJson` on every item, keeping the existing pagination and the 50 item page limit.
+3. **Stable order** — `sortBy=id` sorts by the immutable primary key (with `id` as the tiebreaker of the default order), so offset paging cannot skip or repeat rows while the client writes.
 
-The integrated route calls `PostService.updatePost` and `PostService.startPostProcessWorkflow` after content or publication status changes. That workflow is where `publicContentJson` and Shiki highlighted HTML are generated. Do not generate or accept `highlightedHtml` from the plugin.
+All three are optional additions: responses keep their previous shape unless the new parameter is sent.
 
-The route must run behind the existing Hono app and use a secret bearer token. Keep `OBSIDIAN_SYNC_TOKEN` in a Cloudflare secret, validate the request body with the same Zod schemas used by the posts feature, and return the `REVISION_CONFLICT` payload without mutating `posts` when the link-table revision or hash is stale.
+## Not required
 
-The migration used by the blog is:
+- No `/api/obsidian/*` routes: the plugin uses `/api/admin/posts` only.
+- No dedicated bearer token: an Admin API key in `x-api-key` is enough, and it can be revoked per device.
+- No link table: the post id, slug and content hashes live in the note frontmatter.
+- No `obsidianUri` field: the `obsidian://` link is built locally from the vault name and path.
 
-```sql
-CREATE TABLE IF NOT EXISTS obsidian_post_links (
-  post_id INTEGER PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
-  obsidian_path TEXT,
-  revision INTEGER NOT NULL DEFAULT 1,
-  content_hash TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-```
+## Concurrency
+
+The Admin API has no `ETag`, `If-Match` or version precondition, and `PATCH` writes unconditionally. The plugin therefore re-reads the article and compares content hashes before writing, and asks the user when both the website copy and the local note changed. See `obsidian-sync.md` for the exact rules.
+
+If a future server version exposes a content version or supports `If-Match`, the plugin's client can send it in addition to the hash comparison without changing the frontmatter format.

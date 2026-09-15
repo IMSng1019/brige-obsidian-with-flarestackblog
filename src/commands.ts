@@ -1,7 +1,7 @@
 import { Notice, TFile } from 'obsidian';
 import type BlogSyncPlugin from './main';
 import { ConflictModal } from './ui/conflict-modal';
-import { isConflict } from './sync/sync-service';
+import { isConflict } from './sync/state';
 import { readSyncMetadata } from './sync/frontmatter';
 
 function activeMarkdownFile(plugin: BlogSyncPlugin): TFile | undefined {
@@ -23,12 +23,16 @@ export async function runCreate(plugin: BlogSyncPlugin, file: TFile): Promise<vo
 			new Notice('This note is already linked; use upload linked article');
 			return;
 		}
-		await plugin.syncService.createFromFile(file, plugin.settings.publishOnSync); new Notice('Created website article and linked this note');
+		await plugin.syncService.createFromFile(file, plugin.settings.publishOnSync);
+		new Notice('Created website article and linked this note');
 	} catch (error) { showError(plugin, file, error); }
 }
 
 export async function runUpload(plugin: BlogSyncPlugin, file: TFile, force = false): Promise<void> {
-	try { await plugin.syncService.uploadFile(file, force, plugin.settings.publishOnSync); new Notice('Website article updated'); } catch (error) { showError(plugin, file, error); }
+	try {
+		await plugin.syncService.uploadFile(file, { force, published: plugin.settings.publishOnSync });
+		new Notice('Website article updated');
+	} catch (error) { showError(plugin, file, error); }
 }
 
 async function runDownload(plugin: BlogSyncPlugin, file: TFile): Promise<void> {
@@ -36,7 +40,10 @@ async function runDownload(plugin: BlogSyncPlugin, file: TFile): Promise<void> {
 }
 
 async function runFolderSync(plugin: BlogSyncPlugin): Promise<void> {
-	try { const result = await plugin.syncService.syncFolder(); new Notice(`Blog sync finished: ${result.imported} imported, ${result.updated} updated`); } catch (error) { showError(plugin, undefined, error); }
+	try {
+		const result = await plugin.syncService.syncFolder();
+		new Notice(`Blog sync finished: ${result.imported} imported, ${result.updated} updated, ${result.skipped} unchanged`);
+	} catch (error) { showError(plugin, undefined, error); }
 }
 
 function showError(plugin: BlogSyncPlugin, file: TFile | undefined, error: unknown): void {

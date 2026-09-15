@@ -1,29 +1,28 @@
 import { requestUrl } from 'obsidian';
 import type {
+	AdminPost,
+	AdminPostListPage,
 	ApiErrorPayload,
-	ArticleListResponse,
-	BlogArticle,
-	CreateArticleInput,
-	UpdateArticleInput,
-} from './types';
+	CreatePostInput,
+	UpdatePostInput,
+} from '../types';
+import { buildListPostsQuery } from './query';
 
 export class BlogApiError extends Error {
 	readonly status: number;
 	readonly code: string;
-	readonly current?: BlogArticle;
 
 	constructor(status: number, payload: ApiErrorPayload | undefined) {
-		super(payload?.error.message ?? `Blog API request failed (${status})`);
+		super(payload?.message ?? `Blog API request failed (${status})`);
 		this.name = 'BlogApiError';
 		this.status = status;
-		this.code = payload?.error.code ?? 'REQUEST_FAILED';
-		this.current = payload?.error.current;
+		this.code = payload?.code ?? 'REQUEST_FAILED';
 	}
 }
 
 export interface BlogApiClientOptions {
 	baseUrl: string;
-	token: string;
+	apiKey: string;
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -32,21 +31,21 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 export class BlogApiClient {
 	private readonly baseUrl: string;
-	private readonly token: string;
+	private readonly apiKey: string;
 
 	constructor(options: BlogApiClientOptions) {
 		this.baseUrl = normalizeBaseUrl(options.baseUrl);
-		this.token = options.token.trim();
+		this.apiKey = options.apiKey.trim();
 		if (!this.baseUrl) throw new Error('Blog API URL is required');
-		if (!this.token) throw new Error('Blog API token is required');
+		if (!this.apiKey) throw new Error('Blog API key is required');
 	}
 
-	private async request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+	private async request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
 		const response = await requestUrl({
 			url: `${this.baseUrl}${path}`,
 			method,
 			headers: {
-				Authorization: `Bearer ${this.token}`,
+				'x-api-key': this.apiKey,
 				Accept: 'application/json',
 				...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
 			},
@@ -65,25 +64,31 @@ export class BlogApiClient {
 		return payload as T;
 	}
 
-	listArticles(cursor?: number, limit = 100): Promise<ArticleListResponse> {
-		const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, limit))) });
-		if (cursor !== undefined) params.set('cursor', String(cursor));
-		return this.request<ArticleListResponse>('GET', `/api/obsidian/articles?${params.toString()}`);
+	listPosts(options: { offset?: number; limit?: number } = {}): Promise<AdminPostListPage> {
+		return this.request<AdminPostListPage>('GET', `/api/admin/posts?${buildListPostsQuery(options)}`);
 	}
 
-	getArticle(id: number): Promise<BlogArticle> {
-		return this.request<BlogArticle>('GET', `/api/obsidian/articles/${encodeURIComponent(String(id))}`);
+	getPost(id: number): Promise<AdminPost> {
+		return this.request<AdminPost>('GET', `/api/admin/posts/${encodeURIComponent(String(id))}`);
 	}
 
-	createArticle(input: CreateArticleInput): Promise<BlogArticle> {
-		return this.request<BlogArticle>('POST', '/api/obsidian/articles', input);
+	createPost(input: CreatePostInput): Promise<{ id: number }> {
+		return this.request<{ id: number }>('POST', '/api/admin/posts', { data: input });
 	}
 
-	updateArticle(id: number, input: UpdateArticleInput): Promise<BlogArticle> {
-		return this.request<BlogArticle>('PUT', `/api/obsidian/articles/${encodeURIComponent(String(id))}`, input);
+	updatePost(id: number, input: UpdatePostInput): Promise<AdminPost> {
+		return this.request<AdminPost>('PATCH', `/api/admin/posts/${encodeURIComponent(String(id))}`, { data: input });
 	}
 
-	deleteArticle(id: number): Promise<{ success: true }> {
-		return this.request<{ success: true }>('DELETE', `/api/obsidian/articles/${encodeURIComponent(String(id))}`);
+	async publishPost(id: number): Promise<void> {
+		await this.request('POST', `/api/admin/posts/${encodeURIComponent(String(id))}/publish`);
+	}
+
+	async unpublishPost(id: number): Promise<void> {
+		await this.request('POST', `/api/admin/posts/${encodeURIComponent(String(id))}/unpublish`);
+	}
+
+	async deletePost(id: number): Promise<void> {
+		await this.request('DELETE', `/api/admin/posts/${encodeURIComponent(String(id))}`);
 	}
 }
